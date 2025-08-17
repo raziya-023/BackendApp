@@ -1,9 +1,10 @@
 import {asyncHandler} from "../utils/asyncHandler.js" ;
 import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.models.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import { uploadOnCloudinary, deleteFromCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const generateAccessAndRefreshToken = async (userId) => {
     try {
@@ -196,16 +197,16 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
             secure: true
         }
     
-        const {accessToken, newRefreshToken} = await generateAccessAndRefereshTokens(user._id)
+        const {accessToken, refreshToken} = await generateAccessAndRefreshToken(user._id)
     
         return res
         .status(200)
         .cookie("accessToken", accessToken, options)
-        .cookie("refreshToken", newRefreshToken, options)
+        .cookie("refreshToken", refreshToken, options)
         .json(
             new ApiResponse(
                 200,
-                {accessToken, refreshToken: newRefreshToken},
+                {accessToken, refreshToken},
                 "Access token refreshed"
             )
         )
@@ -217,8 +218,6 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 
 const changeCurrentPassword = asyncHandler(async(req, res) => {
     const {oldPassword, newPassword} = req.body
-
-    
 
     const user = await User.findById(req.user?._id)
     const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
@@ -248,8 +247,8 @@ const getCurrentUser = asyncHandler(async(req, res) => {
 const updateAccountDetails = asyncHandler(async(req, res) => {
     const {fullName, email} = req.body
 
-    if (!fullName || !email) {
-        throw new ApiError(400, "All fields are required")
+    if (!(fullName || email)) {
+        throw new ApiError(400, "fullname and description, one is required")
     }
 
     const user = await User.findByIdAndUpdate(
@@ -276,11 +275,22 @@ const updateUserAvatar = asyncHandler(async(req, res) => {
         throw new ApiError(400, "Avatar file is missing")
     }
 
+    // Get the current user to access the old avatar URL
+    const currentUser = await User.findById(req.user?._id)
+    if (!currentUser) {
+        throw new ApiError(404, "User not found")
+    }
+
     const avatar = await uploadOnCloudinary(avatarLocalPath)
 
     if (!avatar.url) {
         throw new ApiError(400, "Error while uploading on avatar")
         
+    }
+
+    // Delete old avatar from Cloudinary if it exists
+    if (currentUser.avatar) {
+        await deleteFromCloudinary(currentUser.avatar)
     }
 
     const user = await User.findByIdAndUpdate(
@@ -307,10 +317,21 @@ const updateUserCoverImage = asyncHandler(async(req, res) => {
         throw new ApiError(400, "Cover image file is missing")
     }
 
+    // Get the current user to access the old coverImage URL
+    const currentUser = await User.findById(req.user?._id)
+    if (!currentUser) {
+        throw new ApiError(404, "User not found")
+    }
+
     const coverImage = await uploadOnCloudinary(coverImageLocalPath)
 
     if (!coverImage.url) {
         throw new ApiError(400, "Error while uploading on cover image")
+    }
+
+    // Delete old coverImage from Cloudinary if it exists
+    if (currentUser.coverImage) {
+        await deleteFromCloudinary(currentUser.coverImage)
     }
 
     const user = await User.findByIdAndUpdate(
@@ -383,8 +404,8 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
                 subscribedToCount: 1,
                 isSubscribed: 1,
                 email: 1,
-                subscribers: 0,
-                subscribedTo: 0
+                // subscribers: 0,
+                // subscribedTo: 0
             }
         }
     ])
