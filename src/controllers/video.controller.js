@@ -98,6 +98,12 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
 const publishAVideo = asyncHandler(async (req, res) => {
     const { title, description } = req.body
+
+    // Verify authenticated user exists
+    const currentUser = await User.findById(req.user?._id)
+    if (!currentUser) {
+        throw new ApiError(404, "User not found")
+    }
     
     // Validate required fields
     if (!title || !description) {
@@ -273,6 +279,12 @@ const getVideoById = asyncHandler(async (req, res) => {
 const updateVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params
     const { title, description } = req.body
+
+    // Verify authenticated user exists
+    const currentUser = await User.findById(req.user?._id)
+    if (!currentUser) {
+        throw new ApiError(404, "User not found")
+    }
     
     // Validate videoId
     if (!isValidObjectId(videoId)) {
@@ -345,6 +357,12 @@ const updateVideo = asyncHandler(async (req, res) => {
 
 const deleteVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params
+
+    // Verify authenticated user exists
+    const currentUser = await User.findById(req.user?._id)
+    if (!currentUser) {
+        throw new ApiError(404, "User not found")
+    }
     
     // Validate videoId
     if (!isValidObjectId(videoId)) {
@@ -399,6 +417,11 @@ const deleteVideo = asyncHandler(async (req, res) => {
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
     const { videoId } = req.params
+    // Verify authenticated user exists
+    const currentUser = await User.findById(req.user?._id)
+    if (!currentUser) {
+        throw new ApiError(404, "User not found")
+    }
     
     // Validate videoId
     if (!isValidObjectId(videoId)) {
