@@ -23,6 +23,7 @@ import commentRouter from "./routes/comment.route.js"
 import likeRouter from "./routes/like.route.js"
 import playlistRouter from "./routes/playlist.route.js"
 import dashboardRouter from "./routes/dashboard.route.js"
+import healthcheckRouter from "./routes/healthcheck.route.js"
 
 
 //route declaration
@@ -34,6 +35,7 @@ app.use("/api/v1/comments", commentRouter)
 app.use("/api/v1/likes", likeRouter)
 app.use("/api/v1/playlist", playlistRouter)
 app.use("/api/v1/dashboard", dashboardRouter)
+app.use("/api/v1/healthcheck", healthcheckRouter)
 
 // http://localhost:8000/api/v1/users/register
 
