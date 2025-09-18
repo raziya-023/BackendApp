@@ -270,88 +270,69 @@ const updateAccountDetails = asyncHandler(async(req, res) => {
     .json(new ApiResponse(200, user, "Account details updated successfully"))
 });
 
-const updateUserAvatar = asyncHandler(async(req, res) => {
-    const avatarLocalPath = req.file?.path
-
+const updateUserAvatar = asyncHandler(async (req, res) => {
+    const avatarLocalPath = req.file?.path;
     if (!avatarLocalPath) {
-        throw new ApiError(400, "Avatar file is missing")
+        throw new ApiError(400, "Avatar file is missing");
     }
 
-    // Get the current user to access the old avatar URL
-    const currentUser = await User.findById(req.user?._id)
-    if (!currentUser) {
-        throw new ApiError(404, "User not found")
+    const avatar = await uploadOnCloudinary(avatarLocalPath);
+    // This is the important check. We verify the upload was successful AND has a URL.
+    if (!avatar || !avatar.secure_url) {
+        throw new ApiError(400, "Error while uploading avatar");
     }
 
-    const avatar = await uploadOnCloudinary(avatarLocalPath)
-
-    if (!avatar.url) {
-        throw new ApiError(400, "Error while uploading on avatar")
-        
-    }
-
-    // Delete old avatar from Cloudinary if it exists
-    if (currentUser.avatar) {
-        await deleteFromCloudinary(currentUser.avatar)
-    }
+    const oldAvatar = req.user.avatar;
 
     const user = await User.findByIdAndUpdate(
         req.user?._id,
-        {
-            $set:{
-                avatar: avatar.url
-            }
-        },
-        {new: true}
-    ).select("-password")
+        { $set: { avatar: avatar.secure_url } },
+        { new: true }
+    ).select("-password");
 
-    return res
-    .status(200)
-    .json(
-        new ApiResponse(200, user, "Avatar image updated successfully")
-    )
-})
+    // Delete the old avatar only after successfully updating the new one.
+    if (oldAvatar) {
+        try {
+            await deleteFromCloudinary(oldAvatar);
+        } catch (e) {
+            console.error("Failed to delete old avatar:", e);
+        }
+    }
 
-const updateUserCoverImage = asyncHandler(async(req, res) => {
-    const coverImageLocalPath = req.file?.path
+    return res.status(200).json(new ApiResponse(200, user, "Avatar image updated successfully"));
+});
 
+const updateUserCoverImage = asyncHandler(async (req, res) => {
+    const coverImageLocalPath = req.file?.path;
     if (!coverImageLocalPath) {
-        throw new ApiError(400, "Cover image file is missing")
+        throw new ApiError(400, "Cover image file is missing");
     }
 
-    // Get the current user to access the old coverImage URL
-    const currentUser = await User.findById(req.user?._id)
-    if (!currentUser) {
-        throw new ApiError(404, "User not found")
+    const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+    // This is the important check.
+    if (!coverImage || !coverImage.secure_url) {
+        throw new ApiError(400, "Error while uploading cover image");
     }
-
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath)
-
-    if (!coverImage.url) {
-        throw new ApiError(400, "Error while uploading on cover image")
-    }
-
-    // Delete old coverImage from Cloudinary if it exists
-    if (currentUser.coverImage) {
-        await deleteFromCloudinary(currentUser.coverImage)
-    }
+    
+    const oldCoverImage = req.user.coverImage;
 
     const user = await User.findByIdAndUpdate(
         req.user?._id,
-        {
-            $set:{
-                coverImage: coverImage.url
-            }
-        },
-        {new: true}
-    ).select("-password")
+        { $set: { coverImage: coverImage.secure_url } },
+        { new: true }
+    ).select("-password");
 
-    return res
-    .status(200)
-    .json(
-        new ApiResponse(200, user, "Cover image updated successfully")
-    )
-})
+    // Delete the old image only after successfully updating the new one.
+    if (oldCoverImage) {
+        try {
+            await deleteFromCloudinary(oldCoverImage);
+        } catch(e) {
+            console.error("Failed to delete old cover image:", e);
+        }
+    }
+
+    return res.status(200).json(new ApiResponse(200, user, "Cover image updated successfully"));
+});
 
 const getUserChannelProfile = asyncHandler(async (req, res) => {
     const {username} = req.params
