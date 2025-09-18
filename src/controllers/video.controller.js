@@ -32,7 +32,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
     }
     
     // Only show published videos
-    matchStage.isPublished = true
+    //matchStage.isPublished = true
     
     pipeline.push({ $match: matchStage })
     
