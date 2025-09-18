@@ -192,9 +192,22 @@ const deleteTweet = asyncHandler(async (req, res) => {
     )
 })
 
+const getAllTweets = asyncHandler(async (req, res) => {
+    // This is a simplified example. A real feed would have pagination
+    // and likely only show tweets from users the current user follows.
+    const tweets = await Tweet.find({})
+        .populate("owner", "username fullName avatar")
+        .sort({ createdAt: -1 }); // Get newest tweets first
+
+    return res.status(200).json(
+        new ApiResponse(200, tweets, "All tweets fetched successfully")
+    );
+})
+
 export {
     createTweet,
     getUserTweets,
     updateTweet,
-    deleteTweet
+    deleteTweet,
+    getAllTweets
 }
