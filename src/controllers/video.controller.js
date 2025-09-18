@@ -7,6 +7,7 @@ import {asyncHandler} from "../utils/asyncHandler.js"
 import {uploadOnCloudinary, deleteFromCloudinary} from "../utils/cloudinary.js"
 
 const getAllVideos = asyncHandler(async (req, res) => {
+
     const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query
     
     // Build aggregation pipeline
@@ -31,8 +32,8 @@ const getAllVideos = asyncHandler(async (req, res) => {
         ]
     }
     
-    // Only show published videos
-    //matchStage.isPublished = true
+    // Only show published videos - TEMPORARILY COMMENTED OUT FOR TESTING
+    // matchStage.isPublished = true
     
     pipeline.push({ $match: matchStage })
     
@@ -97,65 +98,52 @@ const getAllVideos = asyncHandler(async (req, res) => {
 })
 
 const publishAVideo = asyncHandler(async (req, res) => {
-    const { title, description } = req.body
+    const { title, description } = req.body;
 
-    // Verify authenticated user exists
-    const currentUser = await User.findById(req.user?._id)
-    if (!currentUser) {
-        throw new ApiError(404, "User not found")
-    }
-    
-    // Validate required fields
     if (!title || !description) {
-        throw new ApiError(400, "Title and description are required")
+        throw new ApiError(400, "Title and description are required");
     }
-    
-    // Check if video and thumbnail files are uploaded
-    const videoFileLocalPath = req.files?.videoFile?.[0]?.path
-    const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path
-    
+
+    const videoFileLocalPath = req.files?.videoFile?.[0]?.path;
+    const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path;
+
     if (!videoFileLocalPath) {
-        throw new ApiError(400, "Video file is required")
+        throw new ApiError(400, "Video file is required");
     }
-    
     if (!thumbnailLocalPath) {
-        throw new ApiError(400, "Thumbnail is required")
+        throw new ApiError(400, "Thumbnail is required");
     }
-    
-    // Upload video to cloudinary
-    const videoFile = await uploadOnCloudinary(videoFileLocalPath)
-    const thumbnail = await uploadOnCloudinary(thumbnailLocalPath)
-    
+
+    const videoFile = await uploadOnCloudinary(videoFileLocalPath);
+    const thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
+
     if (!videoFile) {
-        throw new ApiError(400, "Video file upload failed")
+        throw new ApiError(500, "Video file upload failed");
     }
-    
     if (!thumbnail) {
-        throw new ApiError(400, "Thumbnail upload failed")
+        throw new ApiError(500, "Thumbnail upload failed");
     }
-    
-    // Create video document
+
+    // Always use secure_url for both video and thumbnail
     const video = await Video.create({
         title,
         description,
         duration: videoFile.duration,
-        videoFile: videoFile.secure_url, // secure URL
+        videoFile: videoFile.secure_url,
         thumbnail: thumbnail.secure_url,
         views: 0,
         owner: req.user?._id,
-        isPublished: false
-    })
-    
-    const videoUploaded = await Video.findById(video._id).populate("owner", "username avatar")
-    
-    if (!videoUploaded) {
-        throw new ApiError(500, "Video upload failed please try again")
+        isPublished: true // default to published for simplicity
+    });
+
+    if (!video) {
+        throw new ApiError(500, "Video upload failed please try again");
     }
-    
+
     return res
         .status(201)
-        .json(new ApiResponse(200, videoUploaded, "Video uploaded successfully"))
-})
+        .json(new ApiResponse(201, video, "Video uploaded successfully"));
+});
 
 const getVideoById = asyncHandler(async (req, res) => {
     const { videoId } = req.params
@@ -244,13 +232,13 @@ const getVideoById = asyncHandler(async (req, res) => {
         },
         {
             $project: {
-                "videoFile.url": 1,
+                "videoFile": 1, // Ensure we are fetching the videoFile field
+                "thumbnail": 1,
                 title: 1,
                 description: 1,
                 views: 1,
                 createdAt: 1,
                 duration: 1,
-                comments: 1,
                 owner: 1,
                 likesCount: 1,
                 isLiked: 1
@@ -262,13 +250,11 @@ const getVideoById = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Video does not exist")
     }
     
-    // Increment views if user is authenticated
-    if (req.user) {
-        await Video.findByIdAndUpdate(videoId, {
-            $inc: {
-                views: 1
-            }
-        })
+    // Increment views if user is authenticated and is not the owner
+    const videoDoc = await Video.findById(videoId);
+    if (req.user && videoDoc.owner.toString() !== req.user._id.toString()) {
+        videoDoc.views += 1;
+        await videoDoc.save({ validateBeforeSave: false });
     }
     
     return res
@@ -277,92 +263,63 @@ const getVideoById = asyncHandler(async (req, res) => {
 })
 
 const updateVideo = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-    const { title, description } = req.body
+    const { videoId } = req.params;
+    const { title, description } = req.body;
+    const thumbnailLocalPath = req.file?.path;
 
-    // Verify authenticated user exists
-    const currentUser = await User.findById(req.user?._id)
-    if (!currentUser) {
-        throw new ApiError(404, "User not found")
-    }
-    
-    // Validate videoId
     if (!isValidObjectId(videoId)) {
-        throw new ApiError(400, "Invalid videoId")
+        throw new ApiError(400, "Invalid videoId");
     }
-    
-    if (!(title || description)) {
-        throw new ApiError(400, "Title and description, one is required")
-    }
-    
-    // Find the video first
-    const video = await Video.findById(videoId)
-    
-    if (!video) {
-        throw new ApiError(404, "No video found")
-    }
-    
-    // Check if user is owner of the video
-    if (video?.owner.toString() !== req.user?._id.toString()) {
-        throw new ApiError(400, "You can't edit this video as you are not the owner")
-    }
-    
-    // Store old thumbnail public_id for deletion
-    const oldThumbnailUrl = video.thumbnail;
 
-    // Update thumbnail if provided
-    const thumbnailLocalPath = req.file?.path
-    let thumbnail = {}
-    
+    const video = await Video.findById(videoId);
+    if (!video) {
+        throw new ApiError(404, "No video found");
+    }
+
+    if (video.owner.toString() !== req.user?._id.toString()) {
+        throw new ApiError(403, "You can't edit this video as you are not the owner");
+    }
+
+    const updateData = {};
+    if (title) updateData.title = title;
+    if (description) updateData.description = description;
+
     if (thumbnailLocalPath) {
-        thumbnail = await uploadOnCloudinary(thumbnailLocalPath)
-        
-        if (!thumbnail.url) {
-            throw new ApiError(400, "Thumbnail upload failed")
+        const oldThumbnailUrl = video.thumbnail;
+        const thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
+        if (!thumbnail.secure_url) {
+            throw new ApiError(400, "Error while uploading thumbnail");
         }
-        // Delete old thumbnail from Cloudinary using URL
+        // --- CRITICAL FIX ---
+        updateData.thumbnail = thumbnail.secure_url;
+        
+        // Delete old thumbnail after updating the document
         if (oldThumbnailUrl) {
             try {
-                await deleteFromCloudinary(oldThumbnailUrl)
-                console.log("Old thumbnail deleted successfully")
+                await deleteFromCloudinary(oldThumbnailUrl);
             } catch (error) {
-                console.error("Failed to delete old thumbnail:", error)
-                // Don't throw error - continue with update
+                console.error("Failed to delete old thumbnail:", error);
             }
         }
     }
-    
+
     const updatedVideo = await Video.findByIdAndUpdate(
         videoId,
-        {
-            $set: {
-                title,
-                description,
-                ...{thumbnail: thumbnail.url
-                    }
-                
-            }
-        },
+        { $set: updateData },
         { new: true }
-    )
-    
+    );
+
     if (!updatedVideo) {
-        throw new ApiError(500, "Failed to update video please try again")
+        throw new ApiError(500, "Failed to update video details");
     }
-    
+
     return res
         .status(200)
-        .json(new ApiResponse(200, updatedVideo, "Video updated successfully"))
-})
+        .json(new ApiResponse(200, updatedVideo, "Video details updated successfully"));
+});
 
 const deleteVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params
-
-    // Verify authenticated user exists
-    const currentUser = await User.findById(req.user?._id)
-    if (!currentUser) {
-        throw new ApiError(404, "User not found")
-    }
     
     // Validate videoId
     if (!isValidObjectId(videoId)) {
@@ -417,11 +374,6 @@ const deleteVideo = asyncHandler(async (req, res) => {
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
     const { videoId } = req.params
-    // Verify authenticated user exists
-    const currentUser = await User.findById(req.user?._id)
-    if (!currentUser) {
-        throw new ApiError(404, "User not found")
-    }
     
     // Validate videoId
     if (!isValidObjectId(videoId)) {
@@ -441,22 +393,15 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
     }
     
     // Toggle publish status
-    const toggledVideoPublish = await Video.findByIdAndUpdate(
-        videoId,
-        {
-            $set: {
-                isPublished: !video?.isPublished
-            }
-        },
-        { new: true }
-    )
+    video.isPublished = !video.isPublished;
+    await video.save({ validateBeforeSave: false });
     
     return res
         .status(200)
         .json(
             new ApiResponse(
                 200,
-                { isPublished: toggledVideoPublish.isPublished },
+                { isPublished: video.isPublished },
                 "Video publish toggled successfully"
             )
         )
