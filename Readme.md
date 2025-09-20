@@ -3,6 +3,8 @@
 This repository contains the backend server for the VideoTweet application, a full-stack video sharing platform. It is a RESTful API built with Node.js, Express, and MongoDB.
 
 ---
+### **Live Application:** [https://video-tweet-frontend.vercel.app/](https://video-tweet-frontend.vercel.app/)
+### **Frontend Code:** [https://github.com/raziya-023/video-tweet-frontend](https://github.com/raziya-023/video-tweet-frontend)
 
 ## Features
 
