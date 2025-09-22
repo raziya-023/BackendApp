@@ -32,8 +32,8 @@ const getAllVideos = asyncHandler(async (req, res) => {
         ]
     }
     
-    // Only show published videos - TEMPORARILY COMMENTED OUT FOR TESTING
-    // matchStage.isPublished = true
+    // Only show published videos
+    matchStage.isPublished = true
     
     pipeline.push({ $match: matchStage })
     
